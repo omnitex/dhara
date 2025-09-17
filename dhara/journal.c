@@ -508,6 +508,13 @@ int dhara_journal_read_meta(struct dhara_journal *j, dhara_page_t p,
 {
 	/* Offset of metadata within the metadata page */
 	const dhara_page_t ppc_mask = (1 << j->log2_ppc) - 1;
+    // hdr offset returns the "Nth" meta given by the argument
+    // so you take the page number and mask it with something to obtain what?
+    // user data is grouped in checkpoints and the last page contains journal head and current metadata
+    // log2_ppc is the number of contiguously aligned pages in one "checkpoint"
+    // so 1 << log2_ppc == 2**log2_ppc and -1 it's mask for only enough bits
+    // for maximum number of bits allowed for a page in a checkpoint
+    // so the masking is just making sure it's a valid offset to use for hdr_user_offset() to not reach fully OOB
 	const size_t offset = hdr_user_offset(p & ppc_mask);
 
 	/* Special case: buffered metadata */

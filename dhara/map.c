@@ -100,6 +100,8 @@ void dhara_map_clear(struct dhara_map *m)
 dhara_sector_t dhara_map_capacity(const struct dhara_map *m)
 {
 	const dhara_sector_t cap = dhara_journal_capacity(&m->journal);
+    // if gc_ratio is not set, it defaults to 1, thus reserve = cap / 2
+    // the greater the ratio the less is reserved then?
 	const dhara_sector_t reserve = cap / (m->gc_ratio + 1);
 	const dhara_sector_t safety_margin =
 		DHARA_MAX_RETRIES << m->journal.nand->log2_ppb;
@@ -312,6 +314,8 @@ static int auto_gc(struct dhara_map *m, dhara_error_t *err)
 	if (dhara_journal_size(&m->journal) < dhara_map_capacity(m))
 		return 0;
 
+    // so here gc_ratio just specifies the num of iterations to run dhara_map_gc()
+    // with static parameters
 	for (i = 0; i <= m->gc_ratio; i++)
 		if (dhara_map_gc(m, err) < 0)
 			return -1;
