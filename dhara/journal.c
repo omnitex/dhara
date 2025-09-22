@@ -135,15 +135,22 @@ static dhara_page_t next_upage(const struct dhara_journal *j,
 /* Calculate a checkpoint period: the largest value of ppc such that
  * (2**ppc - 1) metadata blocks can fit on a page with one journal
  * header.
+ * 
+ * Choosing pages per checkpoint (unit of user data in journal)
  */
 static int choose_ppc(int log2_page_size, int max)
 {
+    // page size without header and cookie
 	const int max_meta = (1 << log2_page_size) -
 		DHARA_HEADER_SIZE - DHARA_COOKIE_SIZE;
+    // required meta
 	int total_meta = DHARA_META_SIZE;
+    // initial pages per checkpoint
 	int ppc = 1;
 
+    // TODO: necessary to understand this or nah?
 	while (ppc < max) {
+        // double total meta (?)
 		total_meta <<= 1;
 		total_meta += DHARA_META_SIZE;
 
@@ -486,6 +493,7 @@ dhara_page_t dhara_journal_size(const struct dhara_journal *j)
 	 * between the head and the tail. The difference between the two
 	 * is the number of user pages (upper limit).
 	 */
+    // num of pages given by head? so head is simply the number of a pages used up sequentially?
 	dhara_page_t num_pages = j->head;
 	dhara_page_t num_cps = j->head >> j->log2_ppc;
 
@@ -500,6 +508,8 @@ dhara_page_t dhara_journal_size(const struct dhara_journal *j)
 	num_pages -= j->tail_sync;
 	num_cps -= j->tail_sync >> j->log2_ppc;
 
+    // cps == checkpoints
+    // each checkpoint consists of 2**log2_ppc pages?
 	return num_pages - num_cps;
 }
 
@@ -507,7 +517,10 @@ int dhara_journal_read_meta(struct dhara_journal *j, dhara_page_t p,
 			    uint8_t *buf, dhara_error_t *err)
 {
 	/* Offset of metadata within the metadata page */
+
 	const dhara_page_t ppc_mask = (1 << j->log2_ppc) - 1;
+    // ppc_mask = page_per_checkblock - 1
+
     // hdr offset returns the "Nth" meta given by the argument
     // so you take the page number and mask it with something to obtain what?
     // user data is grouped in checkpoints and the last page contains journal head and current metadata
@@ -533,6 +546,7 @@ int dhara_journal_read_meta(struct dhara_journal *j, dhara_page_t p,
 				       buf, err);
 
 	/* General case: fetch from metadata page for checkpoint group */
+    // here you OR with the mask to obtain page number??
 	return dhara_nand_read(j->nand, p | ppc_mask,
 			       offset, DHARA_META_SIZE,
 			       buf, err);

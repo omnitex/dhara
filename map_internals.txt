@@ -24,9 +24,14 @@ The metadata is of a universally fixed size -- it is unrelated to the
 page size, OOB size, or any other characteristic of the chip.
 
 Once items are enqueued, they (and their associated metadata) can be
-referred to by the page at which they were written. They remain
-referable in this way until the exit the back of the queue via a dequeue
-operation. Both enqueue and dequeue are constant-time operations, and so
+referred to by the page at which they were written.
+- so you enqueue based on page number which is the unique ID
+
+They remain
+referable in this way until they exit the back of the queue via a dequeue
+operation.
+
+Both enqueue and dequeue are constant-time operations, and so
 is reading, once we know the page number we want to read from. But how
 do we efficiently associate logical sector numbers to page numbers?
 
@@ -359,6 +364,7 @@ Synchronization
 The journal doesn't have an explicit synchronization algorithm, but
 synchronization points occur periodically for every so many enqueue
 operations.
+- what exactly is journal synchronization?
 
 The map layer provides an explicit synchronization algorithm. When
 requested, we perform garbage collection steps until we reach a

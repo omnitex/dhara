@@ -142,11 +142,14 @@ int dhara_journal_resume(struct dhara_journal *j, dhara_error_t *err);
 
 /* Obtain an upper bound on the number of user pages storable in the
  * journal.
+ * this acts as "get_sector_count()" (?) i.e. number of available pages
+ * after all metadata, journal records, bad blocks etc.?
  */
 dhara_page_t dhara_journal_capacity(const struct dhara_journal *j);
 
 /* Obtain an upper bound on the number of user pages consumed by the
  * journal.
+ * Why upper bound?
  */
 dhara_page_t dhara_journal_size(const struct dhara_journal *j);
 
@@ -157,6 +160,8 @@ static inline uint8_t *dhara_journal_cookie(const struct dhara_journal *j)
 }
 
 /* Obtain the locations of the first and last pages in the journal.
+ * first and last pages? returns the root pointer, incorrect comment?
+ * root is last written user page in the journal
  */
 static inline dhara_page_t dhara_journal_root(const struct dhara_journal *j)
 {
