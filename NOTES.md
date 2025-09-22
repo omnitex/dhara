@@ -23,15 +23,17 @@ Each modification requires `1 + |number of address bits|` (leaf + path up to inc
 Alt pointers are pointers downwards from root not on the path to the new sector (those can be inferred (?)).
 
 
-pros: 
+pros:
 - "perfect wear leveling" (max diff by 1 erase count)
 - journal is assumed to be robust. any way to confirm/check? smt like partial verification? out of scope most likely?
 - some ECC software implementation for potential strengthening the on-chip ECC
 
 TODO: classify common on device NAND flash ECC strength (relevant bit error rates, uncorrectable, standard requirements etc.)
 
+TODO: real HW benchmark? and/or over abstracted block device? how to classify performance?
+
 cons?:
-- radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy 
+- radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy
 - if each page write "emits" a journal update, that's slow but safe. potential (dynamic maybe? where to get heuristics) settings?
   e.g. combine multiple requests to a batch? if they come in some time window or something?
 - currently the metadata (what is that exactly idk yet) does not use any (?) "OOB" areas, meaning it uses the main user areas of the pages,

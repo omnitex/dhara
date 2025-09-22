@@ -444,6 +444,8 @@ This is a memory layout example with the following configuration:
 
   * data: User data (len = (1 << log2_page_size))
   * cp:   Check point metadata for last 3 pages, ie (1 << log2_ppc) - 1
+  -> number of pages governed by check point is set by log2_ppc
+  -> ppc is chosen in a fixed manner right? based on parameters
 
 Checkpoint
 ----------
@@ -452,6 +454,7 @@ Each checkpoint contains a header, a cookie and N metadata structures, one for
 each data page of the checkpoint group. The amount of metadata (the size of
 checkpoint group) depends on the dhara_journal.log2_ppc field:
 N = (1 << log2_ppb) - 1.
+ - one meta of DHARA_META_SIZE per data page in checkpoint group
 
     |- DHARA_HEADER_SIZE -|- DHARA_COOKIE_SIZE -|---- N * DHARA_META_SIZE ----|
     +---------------------+---------------------+-----------------------------+
@@ -462,6 +465,18 @@ N = (1 << log2_ppb) - 1.
 
 The checkpoint header size is 16 bytes long (DHARA_HEADER_SIZE), and has the
 following layout:
+
+ - epoch is 1B so max epoch is 255, correct?
+ - so it can only keep track of 255 full cycles of the journal head
+ passing through the end of memory and wrapping around
+ - this is not connected to program erase cycles straightforwardly, as the journal head moves on a page write
+ - so if you just write full memory, erase, write full memory etc you can increment epoch easily, right?
+ - meaning after 255*number_of_available_pages page writes we lose information?
+ - original WL component was able to keep history about 1M P/E on a 1MB partition
+ - if we have NAND around 4Gb (that's 500MB) and page is 2048 + 64 B, 64 pages per block, 2048 blocks
+ - so 1 "cycle" ~ writing max possible available pages is 2048*64 pages = 2^11 * 2^6 = 2^17 = 131 072
+ - that times 255 is 33 423 360 (33 M) page writes
+ - given the lifetime in P/E cycles is roughly 60k - 100k for SLC NAND, meaning what??
 
     +-------------------------------+
     |  'D'  |  'h'  |  'a'  | epoch |
