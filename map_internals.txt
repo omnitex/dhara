@@ -116,9 +116,12 @@ Furthermore, note that in any update, the set of non-leaf nodes always
 form a path to the sector which has been updated. Therefore, at least
 half of the down-pointers in the set can be omitted, since they can be
 inferred by association (provided we know which level each non-leaf
-belongs to). The only piece of information for each non-leaf which can't
+belongs to). 
+- ^^
+The only piece of information for each non-leaf which can't
 be inferred is the pointer which *doesn't* point along the path to the
 updated sector. We call these pointers "alt-pointers".
+- alt-pointers point to the older part of the tree which is still valid
 
 Instead of storing one leaf and H non-leaf nodes for each update, we
 simply store together:
@@ -151,6 +154,7 @@ single sector, 0001. We start with a single update record:
 All the alt-pointers are NULL, because they have nothing to point to.
 Now, we update the map by adding an update record for the sector address
 0000:
+- so you differ in the last bit, and you have alt-pointer for each bit
 
     +---+   +---+
     | 0 |   | 0 |
@@ -163,6 +167,8 @@ The new record has a single non-NULL alt-pointer at position H-1 (= 3),
 and this pointer points to the previous record. Note that the two
 records have in common their first 3 sector address bits. Now we add
 1010 and 1000, to give:
+- now the third record from left, it differs in 2 bits, but has alt-pointer only for the first diff, why?
+- fourth record has 2 alt-pointers... yeah it makes sense, try traversing
 
     +---+   +---+   +---+    +---+
     | 0 |   | 0 |<----1--------1 |
@@ -207,8 +213,9 @@ changes so that it builds A[] as:
     record's sector address:
     * set Ai = address of the current record
     * Follow alt-pointer i to obtain a new current record.
-  * Else:
+  * Else: (bit i of target address is the SAME as bit i of current record's address)
     * set Ai = alt-pointer i of the current record
+    - why do I save the alt pointer, is it used? feels like not, as I follow onto the next bit not via the pointer?
 
 Garbage collection
 ==================
@@ -404,6 +411,8 @@ can often prune the tree at a higher level -- specifically, at the level
 of the first node which points to a subtree containing nothing other
 than the victim page. Call this node the "delete-root". Note that the
 delete-root, by definition, has two non-NULL child pointers.
+- what are the 2 non-NULL child pointers? if the "delete-root" points to subtree
+ which contains only (nothing other than) the victim page to be deleted
 
 To do this on a functional radix tree, we'd have to update all nodes up
 to and including the delete-root. How do we do this in our case? All
@@ -419,6 +428,7 @@ alt-pointer at the level of the delete-root is now NULL.
 
 Having done this, we've performed an action equivalent to repacking,
 which creates one page, but also removed one logical page from the map.
+- so deletion (always?) writes a page
 Of course, there is one case that must be handled specially: deletion of
 the tree root.
 
@@ -428,6 +438,8 @@ Memory layout
 This is a memory layout example with the following configuration:
 
   * log2_ppc = 2, ie check point group contains 4 pages
+  - check point group is user data pages + (1+ ?) checkpoint pages
+  - checkpoint has header, cookie and N metas -> can that reach beyong a single checkpoint page?
   * log2_ppb = 4, ie 16 pages per erase block
 
   A single erase block layout, each slot represents a physical flash page:
@@ -455,11 +467,15 @@ each data page of the checkpoint group. The amount of metadata (the size of
 checkpoint group) depends on the dhara_journal.log2_ppc field:
 N = (1 << log2_ppb) - 1.
  - one meta of DHARA_META_SIZE per data page in checkpoint group
+ - if it's 64 pages per eraseblock, then log2_ppb = 6 meaning N = 63
+ - meta is 132 B, 63 * 132 = 8 316 B, let's include header and cookie (16 + 4B) to get 8 336 B ?
+ - 
 
     |- DHARA_HEADER_SIZE -|- DHARA_COOKIE_SIZE -|---- N * DHARA_META_SIZE ----|
     +---------------------+---------------------+-----------------------------+
     |        header       |        cookie       | meta1 : meta2 : ... : metaN |
     +---------------------+---------------------+-----------------------------+
+    - cookie is number of currently mapped pages
 
 ### Checkpoint header
 
@@ -498,14 +514,16 @@ following layout:
 
 The cookie field is 4 byte long (DHARA_COOKIE_SIZE), and it's used by the map
 layer for store the current number of mapped pages.
+- dominant terminology is "page", but dhara_map struct and cookie functions (ck_xxx) work with dhara_sector_t type, so sector == page right?
 
 ### Checkpoint metadata
 
 This zone is 132 bytes long (DHARA_META_SIZE), and it's where the radix tree is
 implemented, thus, where the map between physical pages and logical sectors is
 saved. It contains the alt pointers vector, {A0, A1, A2, ..., A(31)}, and the
-logical sector number (id). There is one of this structure per physical mapped
-page.
+logical sector number (id). **There is one of this structure per physical mapped
+page*
+ - if a page is ±2048 bytes, would it be around 6.5 percent used up by metadata?
 
     |---------- 32 bits ------------|
     +-------------------------------+
@@ -515,3 +533,6 @@ page.
     :           POINTERS            :
     |            32x4B              |
     +-------------------------------+
+    - 32x alt pointers for parts of radix tree not directly "down"
+    - e.g. 1010 on first level you know it's the 1 subtree, 2nd level you know it's the 10 subtree etc.
+      so that side of the connection is straightforward

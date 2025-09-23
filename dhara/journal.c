@@ -86,6 +86,7 @@ static inline void hdr_clear_user(uint8_t *buf, uint8_t log2_page_size)
 }
 
 /* Obtain pointers to user data */
+// you skip 'which' number of metadata blocks (each 132B and contains page id + 32 alt pointers)
 static inline size_t hdr_user_offset(uint8_t which)
 {
 	return DHARA_HEADER_SIZE + DHARA_COOKIE_SIZE +
@@ -122,7 +123,10 @@ static dhara_block_t next_block(const struct dhara_nand *n, dhara_block_t blk)
 static dhara_page_t next_upage(const struct dhara_journal *j,
 			       dhara_page_t p)
 {
+	// next page will always follow, so increment
 	p++;
+	// I assume this is skipping the checkpoint page? to get to next user page
+	// but why exactly this alignment?
 	if (is_aligned(p + 1, j->log2_ppc))
 		p++;
 
@@ -135,6 +139,8 @@ static dhara_page_t next_upage(const struct dhara_journal *j,
 /* Calculate a checkpoint period: the largest value of ppc such that
  * (2**ppc - 1) metadata blocks can fit on a page with one journal
  * header.
+ * - ahh, ^^, so ppc is selected to always fit HEADER + COOKIE + ppc*DHARA_META_SIZE in a single page
+ * - so assuming some standardized page size, it's basically fixed
  * 
  * Choosing pages per checkpoint (unit of user data in journal)
  */
@@ -528,6 +534,8 @@ int dhara_journal_read_meta(struct dhara_journal *j, dhara_page_t p,
     // so 1 << log2_ppc == 2**log2_ppc and -1 it's mask for only enough bits
     // for maximum number of bits allowed for a page in a checkpoint
     // so the masking is just making sure it's a valid offset to use for hdr_user_offset() to not reach fully OOB
+
+	// how many metadata blocks you have in a checkpoint?
 	const size_t offset = hdr_user_offset(p & ppc_mask);
 
 	/* Special case: buffered metadata */

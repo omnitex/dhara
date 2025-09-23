@@ -130,15 +130,19 @@ static int trace_path(struct dhara_map *m, dhara_sector_t target,
 	dhara_page_t p = dhara_journal_root(&m->journal);
 
 	if (new_meta)
+		// target is logical page number?
 		meta_set_id(new_meta, target);
 
 	if (p == DHARA_PAGE_NONE)
 		goto not_found;
 
+	// so here you read current meta of root page
 	if (dhara_journal_read_meta(&m->journal, p, meta, err) < 0)
 		return -1;
 
+	// radix depth, right, traversing the radix tree down from root
 	while (depth < DHARA_RADIX_DEPTH) {
+		// what is this id?
 		const dhara_sector_t id = meta_get_id(meta);
 
 		if (id == DHARA_SECTOR_NONE)
