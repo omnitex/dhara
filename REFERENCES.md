@@ -12,3 +12,7 @@ Bus pirate apparently use Dhara?
 
 ### https://github.com/littlefs-project/ramrsbd
 Reed Solomon ECC implementation, not a priority as on-device ECC is (always?) present -- TODO is it mandated by ONFI in any way?
+
+### https://www.blunkmicro.com/litefs-nand.htm
+- few key points such as read-wear leveling, recycling bad blocks when corrected bit threshold is met
+- TODO: do we have info about ECC corrections performed by the flash chip? so we can build on top of that?

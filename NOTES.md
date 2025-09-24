@@ -7,6 +7,7 @@ log2_ppc: it's the log2 of ppc (pages per checkpoint) of the number of contiguou
 journal.c: dhara_journal_init: choosing ppc based on log2 of page size and log2 of ppb (pages per  erase block). choose_ppc "calculate checkpoint period"
 
 choose_ppc(log2_page_sie, max) ~ (log2_page_size, log2_ppb)
+! journal.c: choose_ppc(): ppc as a maximum number of metadata "blocks" that can fit (with header&cokie) in one page
 
 
 trace_path() somehow reconstructs something from the journal? but is the journal
@@ -20,7 +21,7 @@ Mapping based on binary radix tree. Cannot modify existing objects (flash!) so a
 
 Each modification requires `1 + |number of address bits|` (leaf + path up to including root) nodes == pack these into a fixed sized allocation unit.
 
-Alt pointers are pointers downwards from root not on the path to the new sector (those can be inferred (?)).
+Alt pointers are pointers downwards from root not on the path to the new sector (those can be inferred).
 
 
 pros:
@@ -31,10 +32,21 @@ pros:
 TODO: classify common on device NAND flash ECC strength (relevant bit error rates, uncorrectable, standard requirements etc.)
 
 TODO: real HW benchmark? and/or over abstracted block device? how to classify performance?
+ - prolly need to do add verbose "debug prints" to Dhara/dhara_glue/spi_nand_flash and test on HW to capture the flow easier than going through the code
 
 cons?:
-- radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy
-- if each page write "emits" a journal update, that's slow but safe. potential (dynamic maybe? where to get heuristics) settings?
+- radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy (A)
+- if each page write "emits" a journal update, that's slow but safe. potential (dynamic maybe? where to get heuristics) settings? 
+TODO: I'm still confused on what exactly is the journal, there are checkpoint pages but when are those written?
   e.g. combine multiple requests to a batch? if they come in some time window or something?
 - currently the metadata (what is that exactly idk yet) does not use any (?) "OOB" areas, meaning it uses the main user areas of the pages,
   not any spare areas that are accessible (and have from what I've seen quite a fixed structure, is that from ONFI?)
+
+
+(A) comparing to "legacy" WL https://github.com/espressif/esp-idf/tree/master/components/wear_levelling
+- legacy on NOR flash, 4KB sector size vs. NAND where each page is 2048/4096 + some OOB
+- legacy had multiple counters (incrementing at diferent rates based on erase operations performed) + a simple calculation for logical->physical sector to access in the given address space
+- legacy did write to flash in minimal chunks of 16 B ("pos update record") !!! NAND can only write a full page, potentially partial-page programming (need to follow datasheet instructions so on-chip ECC works correctly) meaning an absolutely different approach is necessary
+- so Dhara does only full page writes, correct? which would be the easiest approach, not fussing over partial page writes
+- only 4 partial page programs allowed on a single page
+- NOP == "number of partial programs"
