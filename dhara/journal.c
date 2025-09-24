@@ -18,6 +18,8 @@
 #include "journal.h"
 #include "bytes.h"
 
+#include <stdio.h>  // debug
+
 /************************************************************************
  * Metapage binary format
  */
@@ -226,6 +228,7 @@ void dhara_journal_init(struct dhara_journal *j,
 	j->log2_ppc = choose_ppc(n->log2_page_size, n->log2_ppb);
 
 	reset_journal(j);
+	// TODO: nothing beyond this runs in host_test, need real HW connected to fully run Dhara?
 }
 
 /* Find the first checkpoint-containing block. If a block contains any
@@ -238,6 +241,7 @@ static int find_checkblock(struct dhara_journal *j,
 {
 	int i;
 
+	// over all blocks while checking for max retries
 	for (i = 0; (blk < j->nand->num_blocks) &&
 		    (i < DHARA_MAX_RETRIES); i++) {
 		const dhara_page_t p =
@@ -245,10 +249,14 @@ static int find_checkblock(struct dhara_journal *j,
 			((1 << j->log2_ppc) - 1);
 
 		if (!(dhara_nand_is_bad(j->nand, blk) ||
+		// here we read 1 page worth of data into j->page_buf 
 		      dhara_nand_read(j->nand, p,
 				      0, 1 << j->nand->log2_page_size,
 				      j->page_buf, err)) &&
+			// check for magic, if it doesn't have it, iterate to next block
 		    hdr_has_magic(j->page_buf)) {
+			// blk is a sequential block number containing a checkpoint
+			// -> not every block has to contain a checkpoint?
 			*where = blk;
 			return 0;
 		}
@@ -324,9 +332,11 @@ static int cp_free(struct dhara_journal *j, dhara_page_t first_user)
 static dhara_page_t find_last_group(struct dhara_journal *j,
 				    dhara_block_t blk)
 {
+	// number of checkpoint groups in a block
 	const int num_groups = 1 << (j->nand->log2_ppb - j->log2_ppc);
 	int low = 0;
 	int high = num_groups - 1;
+	fprintf(stderr, "find_last_group: block %u, num_groups %u, low %u, high %u\n", blk, num_groups, low, high); // debug
 
 	/* If a checkpoint group is completely unprogrammed, everything
 	 * following it will be completely unprogrammed also.
@@ -349,9 +359,13 @@ static dhara_page_t find_last_group(struct dhara_journal *j,
 		}
 	}
 
+	fprintf(stderr, "after loop: block %u, num_groups %u, low %u, high %u\n", blk, num_groups, low, high); // debug
+	fprintf(stderr, "returning: %u\n", (blk << j->nand->log2_ppb)); // debug
+
 	return blk << j->nand->log2_ppb;
 }
 
+// root is last written user page in the journal
 static int find_root(struct dhara_journal *j, dhara_page_t start,
 		     dhara_error_t *err)
 {
@@ -438,13 +452,18 @@ int dhara_journal_resume(struct dhara_journal *j, dhara_error_t *err)
 	dhara_page_t last_group;
 
 	/* Find the first checkpoint-containing block */
+	// first checkblock, so starting from 0, DHARA_MAX_RETRIES will be the main limit?
+	// after find_checkblock(), j->page_buf will contain the checkpoint page, which governs N contigous pages before it
 	if (find_checkblock(j, 0, &first, err) < 0) {
 		reset_journal(j);
 		return -1;
 	}
 
 	/* Find the last checkpoint-containing block in this epoch */
+	// checkpoint page has epoch in the header
+	// wouldn't it be out of date in the _first_ checkblock?
 	j->epoch = hdr_get_epoch(j->page_buf);
+	// last (== most recent, right?)
 	last = find_last_checkblock(j, first);
 
 	/* Find the last programmed checkpoint group in the block */
@@ -490,6 +509,7 @@ dhara_page_t dhara_journal_capacity(const struct dhara_journal *j)
 	const dhara_page_t good_cps = good_blocks << log2_cpb;
 
 	/* Good checkpoints * (checkpoint period - 1) */
+	fprintf(stderr, "dhara_journal_capacity(): returning %u\n", (good_cps << j->log2_ppc) - good_cps); // debug
 	return (good_cps << j->log2_ppc) - good_cps;
 }
 

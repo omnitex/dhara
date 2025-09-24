@@ -64,6 +64,7 @@
  * assist with this. If the head meets the tail, the journal will refuse
  * to enqueue more pages.
  */
+// so journal is just a struct in memory, not in flash
 struct dhara_journal {
 	const struct dhara_nand		*nand;
 	uint8_t				*page_buf;
