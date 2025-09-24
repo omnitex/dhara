@@ -9,7 +9,6 @@ journal.c: dhara_journal_init: choosing ppc based on log2 of page size and log2 
 choose_ppc(log2_page_sie, max) ~ (log2_page_size, log2_ppb)
 ! journal.c: choose_ppc(): ppc as a maximum number of metadata "blocks" that can fit (with header&cokie) in one page
 
-
 trace_path() somehow reconstructs something from the journal? but is the journal
 physically stored? in what form? how is it reconstructed on start-up?
 
@@ -24,7 +23,7 @@ Each modification requires `1 + |number of address bits|` (leaf + path up to inc
 Alt pointers are pointers downwards from root not on the path to the new sector (those can be inferred).
 
 
-pros:
+### pros:
 - "perfect wear leveling" (max diff by 1 erase count)
 - journal is assumed to be robust. any way to confirm/check? smt like partial verification? out of scope most likely?
 - some ECC software implementation for potential strengthening the on-chip ECC
@@ -34,14 +33,10 @@ TODO: classify common on device NAND flash ECC strength (relevant bit error rate
 TODO: real HW benchmark? and/or over abstracted block device? how to classify performance?
  - prolly need to do add verbose "debug prints" to Dhara/dhara_glue/spi_nand_flash and test on HW to capture the flow easier than going through the code
 
-cons?:
+### cons?:
 - radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy (A)
-- if each page write "emits" a journal update, that's slow but safe. potential (dynamic maybe? where to get heuristics) settings? 
-TODO: I'm still confused on what exactly is the journal, there are checkpoint pages but when are those written?
-  e.g. combine multiple requests to a batch? if they come in some time window or something?
-- currently the metadata (what is that exactly idk yet) does not use any (?) "OOB" areas, meaning it uses the main user areas of the pages,
-  not any spare areas that are accessible (and have from what I've seen quite a fixed structure, is that from ONFI?)
-
+- if each page write "emits" a journal update, "instruction consumption"?
+- no read disturbance mitigation (fact check?) -- repeated read operations without refreshing the data via writing degrades it
 
 (A) comparing to "legacy" WL https://github.com/espressif/esp-idf/tree/master/components/wear_levelling
 - legacy on NOR flash, 4KB sector size vs. NAND where each page is 2048/4096 + some OOB
