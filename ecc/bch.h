@@ -56,6 +56,16 @@ struct bch_def {
  * the number of bits of ECC, is less than the Galois field order. You
  * can supply chunks smaller than this.
  */
+ // TODO !!! BCH_MAX_ECC is in BYTES
+ // thus 1023 must also be BYTES value, and BCH_MAX_CHUNK_SIZE then is in BYTES too
+ // but the comment talks about BITS?
+ // bch_generate() works with a chunk (called a page in the func comment),
+ // I don't see where we enforce the chunk size to be <= BCH_MAX_CHUNK_SIZE
+ // and if it is in bytes, does that mean only 1016 byte chunks should be able to be written??
+
+ // it does not make sense to write arbitrarily big chunks, as the bit correction capability (based on the number of ECC bytes) is fixed
+ // e.g. bch_4bit cannot satisfy correcting 4 bits on arbitrarily big chunks
+ // so I think it's a bug in the implementation, that this BCH_MAX_CHUNK_SIZE is not enforced anywhere
 #define BCH_MAX_CHUNK_SIZE	(1023 - BCH_MAX_ECC)
 
 /* BCH codes for 1, 2, 3 and 4-bit ECC */
@@ -85,5 +95,14 @@ int bch_verify(const struct bch_def *bch,
  */
 void bch_repair(const struct bch_def *bch,
 		uint8_t *chunk, size_t len, uint8_t *ecc);
+
+/*
+ * Exposing internal functions from bch.c
+ */
+
+static bch_poly_t chunk_remainder(const struct bch_def *def,
+				  const uint8_t *chunk, size_t len);
+static void pack_poly(const struct bch_def *def, bch_poly_t poly, uint8_t *ecc);
+static bch_poly_t unpack_poly(const struct bch_def *def, const uint8_t *ecc);
 
 #endif

@@ -48,6 +48,7 @@ const struct bch_def bch_4bit = {
 	.ecc_bytes	= 7
 };
 
+// bch_poly_t is uint64_t
 static bch_poly_t chunk_remainder(const struct bch_def *def,
 				  const uint8_t *chunk, size_t len)
 {
@@ -57,11 +58,21 @@ static bch_poly_t chunk_remainder(const struct bch_def *def,
 	for (i = 0; i < len; i++) {
 		int j;
 
+		// XOR with 0xff inverts the bits
+		// so we accumulate remainder by XORing with inverted byte
+		// chunk[i] is only uint8_t, remainder is uint64_t
 		remainder ^= chunk[i] ^ 0xff;
 
+		// for each bit in the current chunk byte
+		// polynomial long division?
 		for (j = 0; j < 8; j++) {
+
+			// TODO what does this do?
+			// if the lowest bit is 1
 			if (remainder & 1)
+				// we need to subtract (XOR) the generator polynomial
 				remainder ^= def->generator;
+			// shift right to process the next bit
 			remainder >>= 1;
 		}
 	}
@@ -69,10 +80,12 @@ static bch_poly_t chunk_remainder(const struct bch_def *def,
 	return remainder;
 }
 
+// poly is output from chunk_remainder()
 static void pack_poly(const struct bch_def *def, bch_poly_t poly, uint8_t *ecc)
 {
 	int i;
 
+	// for the specified amount of ECC bytes wanted
 	for (i = 0; i < def->ecc_bytes; i++) {
 		ecc[i] = ~poly;
 		poly >>= 8;
@@ -96,6 +109,7 @@ static bch_poly_t unpack_poly(const struct bch_def *def, const uint8_t *ecc)
 void bch_generate(const struct bch_def *bch,
 		  const uint8_t *chunk, size_t len, uint8_t *ecc)
 {
+	// 1. compute the polynomial remainder of the chunk data (division by generator polynomial?)
 	pack_poly(bch, chunk_remainder(bch, chunk, len), ecc);
 }
 
