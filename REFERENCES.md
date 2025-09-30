@@ -16,3 +16,7 @@ Reed Solomon ECC implementation, not a priority as on-device ECC is (always?) pr
 ### https://www.blunkmicro.com/litefs-nand.htm
 - few key points such as read-wear leveling, recycling bad blocks when corrected bit threshold is met
 - TODO: do we have info about ECC corrections performed by the flash chip? meaning on like the SPI layer, when checking status after a read operation?
+
+## https://github.com/Silicon42/Tiny_ECC
+
+## Linux implementation of NAND ECC https://github.com/torvalds/linux/blob/master/drivers/mtd/nand/ecc.c

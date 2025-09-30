@@ -8,6 +8,7 @@
 ## [LLSM: A Lifetime-Aware Wear-Leveling for LSM-Tree on NAND Flash Memory](https://sci-hub.st/https://doi.org/10.1109/TCAD.2022.3197542)
 - Log-structured merge-tree: indexed access with high insert volume, buffer in smt like b+ tree, flush to disk as immutable sorted component
 - LSMT good for key-value, write-optimized, periodic merging of sorted files on disk <- this needs adapting for flash
+- existing NVS already incorporates wear leveling per the writing scheme, so this is not really interesting for us?
 
 ### M.-C. Yang, Y.-H. Chang, C.-W. Tsao, and P.-C. Huang, “New ERA: New efficient reliability-aware wear leveling for endurance enhancement of flash storage devices,” in Proc. 50th ACM/EDAC/IEEE Design Autom. Conf. (DAC), 2013, pp. 1–6.
 - https://sci-hub.st/https://doi.org/10.1145/2463209.2488936
@@ -41,3 +42,28 @@
 ## [Adaptive Differential Wearing for Read Performance Optimization on High-Density nand Flash Memory](https://ieeexplore.ieee.org/abstract/document/10190114)
 - Adaptive Differential Wearing (ADWR), high density 3D NAND, optimizing read-retries -- not really the case for our NANDs (SLC, 60k-100k P/E cycle lifetime per data sheet, very likely not any advanced 3D process)
 - we cannot issue read-retry with different voltages, right? SPI NAND does not allow this kind of raw access? (e.i. you just issue a READ command and let the chip return something + status, right?)
+
+## [Bit Error Rate in NAND Flash Memories !2008!](https://sci-hub.st/https://doi.org/10.1109/RELPHY.2008.4558857)
+- RBER -> ECC -> UBER
+
+## https://www.macronix.com/Lists/ApplicationNote/Attachments/2100/AN0862V1-SPI-NAND%20&%20Host-Side%20ECC%20in%20Linux%20-%20ECC%20Engine%20Framework.pdf
+- "Assuming all devices are running at similar clock speeds, NOR flash has the fastest read throughput at about 66 MB/sec. The two bars on the right illustrate the read performance of NAND with on-die ECC, where the NAND device calculates the ECC before reading the data. this NAND architecture is the slowest and can reach about 27 MB/sec, which is 60% lower than NOR. However, if the ECC calculation is performed by the host, this read speed can be increased to 56MB/sec, which is very similar to the read performance of NOR flash."
+- TODO
+
+
+## https://www.usenix.org/system/files/conference/fast14/fast14-paper_jimenez.pdf
+- "wear UNleveling" -- do it page-based to transfer stress from weaker to stronger pages -- not "blind" uniform leveling -- more robust approach due to die/block/page variance
+- must not assume homogenous page endurance!
+- writing pages sequentially in a block desirable even for SLC ? assume so, if it's a requirement for MLC
+- opportunistically "relieve" weak pages -- skip them on write: 4th page state (clean, valid, invalid, relieved)
+- FTL can identify page update frequencies ("temperature", e.g. hot, warm, cold). Hot data has high chance to be updates and thus invalidated, reducing garbage collection overhead
+- scrubbing once again!
+- "Note that flash blocks are dynamically mapped to the logical partitions, and thus, all of the physical blocks in the device will eventually be allocated to the hottest partition."
+- reactive relief: evolution of page BER to detect weak pages asap
+- extra metadata: 1 bit to mark a page reached threshold of k corrected faulty bits (below the max possible correctable n) + counter for how many weak pages have been detected so far
+
+## [A page-granularity wear-leveling (PGWL) strategy for NAND flash memory-based sink nodes in wireless sensor networks](https://sci-hub.st/https://doi.org/10.1016/j.jnca.2015.12.010)
+- 3.3 programming relief operations, builds on top of Jimenez et. al above!
+- relief cycle = act of ensuring page is not programmed between two adjacent erase cycles
+- !?! I thought the cell degradation is caused by erasing? but it's actually due to the charge injection while programming? that's why it's P/E cycles and not just E cycles, right? I've been focusing on the 'erase' part too much!
+- 4.3 has algorithms, nice. t_current wouldn't be used in our use-case, right? could it be safely removed from the algorithms?

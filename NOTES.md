@@ -30,6 +30,16 @@ Alt pointers are pointers downwards from root not on the path to the new sector 
 
 TODO: classify common on device NAND flash ECC strength (relevant bit error rates, uncorrectable, standard requirements etc.)
 
+Dhara has 1-4 bits repair BCH codes, the strongest uses 7 ECC bytes for given chunk (assuming it's used for a page). Meaning the larger a page, the weaker it gets?
+
+### AS5F31G04SND-08LIN
+- 8bit ECC for each 512bytes + 32bytes, 4bit ECC for each 512bytes + 16bytes -- that's correction ability, right?
+- for 2048 + 64 B pages: 2048B is 4 data storage areas, then 4 * 4B of spare area protected by ECC, then 4*4B spare area not protected, then finally 32B is ECC
+- so 32B of ECC is over 2048 + 16 = 2064B, then code ratio is % of useful data (that's 2064B) out of chunk including ECC (2064 + 32 = 2096) so 2064/2096 = 0.984733 ?
+- 16 B of ECC protected spare OOB area could be used for additional Dhara ECC? the strongest currently offered uses 7 bytes for ECC, could be extended when proper polynomial parameters are researched?
+- would that add anything if the bit-correction-rate would be <= than internal ECC?
+
+
 TODO: real HW benchmark? and/or over abstracted block device? how to classify performance?
  - prolly need to do add verbose "debug prints" to Dhara/dhara_glue/spi_nand_flash and test on HW to capture the flow easier than going through the code
 
