@@ -44,14 +44,22 @@ TODO: real HW benchmark? and/or over abstracted block device? how to classify pe
  - prolly need to do add verbose "debug prints" to Dhara/dhara_glue/spi_nand_flash and test on HW to capture the flow easier than going through the code
 
 ### cons?:
-- radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy (A)
+- radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy (*A) -- see below
 - if each page write "emits" a journal update, "instruction consumption"?
 - no read disturbance mitigation (fact check?) -- repeated read operations without refreshing the data via writing degrades it
 
-(A) comparing to "legacy" WL https://github.com/espressif/esp-idf/tree/master/components/wear_levelling
+(*A) comparing to "legacy" WL https://github.com/espressif/esp-idf/tree/master/components/wear_levelling
 - legacy on NOR flash, 4KB sector size vs. NAND where each page is 2048/4096 + some OOB
 - legacy had multiple counters (incrementing at diferent rates based on erase operations performed) + a simple calculation for logical->physical sector to access in the given address space
 - legacy did write to flash in minimal chunks of 16 B ("pos update record") !!! NAND can only write a full page, potentially partial-page programming (need to follow datasheet instructions so on-chip ECC works correctly) meaning an absolutely different approach is necessary
 - so Dhara does only full page writes, correct? which would be the easiest approach, not fussing over partial page writes
 - only 4 partial page programs allowed on a single page
 - NOP == "number of partial programs"
+
+## Improving Dhara: the easiest approach?
+- given the journal is a thing we want to keep for robustness, extending Dhara with some level of "unleveling"/page relief based on bit corrections performed on read seems a good approach
+- so this would entail keeping some metadata on individual pages and being able to transparently skip a page for writing.
+- as Dhara currently does not use any OOB areas, we could easily use them for this
+- TODO double check current OOB usage: only bad block marking in first page of a block, first 2 bytes of OOB being non-0xffff (https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/src/nand_impl.c#L95)? nothing besides this?
+- https://github.com/omnitex/dhara/blob/master/dhara/nand.h#L92 read will have to provide ECC info regardless of any error occurring -- we need the number of bits corrected (can be obtained, if the NAND chips supports it, from ECC portion of status register after a read)
+- TODO check if status register contents are vendor specific or standardized
