@@ -18,11 +18,17 @@ extern "C"
 #include "map.h"
 #include "nand.h"
 #include <stdint.h>
+#include <stdio.h>
 
+#define DEBUG 0
 
 
 static inline uint32_t dhara_nand_pagesize(const struct dhara_nand *n)
 {
+	#if DEBUG
+	fprintf(stderr, "dhara_nand_pagesize(): log2_page_size %u, returning 1 << log2_page_size %u\n",
+		n->log2_page_size, 1 << n->log2_page_size);
+	#endif
 	return (1 << n->log2_page_size);
 }
 

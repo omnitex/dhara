@@ -10,6 +10,7 @@
 
 #include "dhara.h"
 #include "DharaNandDriver.hpp"
+#include <stdio.h>
 
 #if DHARA_USE_CPP_LAYER != 0
 
@@ -21,6 +22,7 @@ private:
 public:
     int Init(DharaNandDriver *nand_driver, uint8_t *page_buf, uint8_t gc_ratio, dhara_error_t *err = nullptr)
     {
+        fprintf(stderr, "DharaFTL::Init(): calling dhara_map_init() and dhara_map_resume()\n");
         dhara_map_init(&Map, nand_driver, page_buf, gc_ratio);
         return dhara_map_resume(&Map, err);
     }

@@ -13,11 +13,11 @@
 class NandExample : public DharaNandDriver
 {
 public:
-    static constexpr uint32_t SECTORS_NUMBER = 32;
+    static constexpr uint32_t BLOCKS_NUMBER = 32;
 private:
-    static constexpr uint32_t ERASE_SECTOR_SIZE = 4096;
+    static constexpr uint32_t BLOCK_ERASE_SIZE = 4096;
     // Emulating memory space
-    static uint8_t Pages[ERASE_SECTOR_SIZE * SECTORS_NUMBER];    
+    static uint8_t Pages[BLOCK_ERASE_SIZE * BLOCKS_NUMBER];
 public:
 
     NandExample(uint8_t Log2PageSize, uint8_t Log2Ppb, unsigned int NumBlocks)

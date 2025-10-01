@@ -8,6 +8,8 @@
 #include "DharaNandUserHardware.hpp"
 #include <cstdio>
 #include <cstring>
+#define debug(fmt, ...) \
+    fprintf(stderr, "[%s:%d] " fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
 
 /***CPP INITIALIZATION EXAMPLE***/
 /*
@@ -81,7 +83,7 @@ int DharaNandUserHardware::EraseBlock(dhara_block_t bno, dhara_error_t *err)
 	{
 		return -1;
 	}
-	printf("Erasing page: %lu!\r\n", addr);
+	debug("Erasing page: %lu!", addr);
 	return 0;
 }
 
@@ -96,7 +98,7 @@ int DharaNandUserHardware::Prog(dhara_page_t p, const uint8_t *data, dhara_error
 		return -1;
 	}
 
-	printf("Write adr: %lu\r\n", addr);
+	debug("Write adr: %lu", addr);
 	return 0;
 }
 
@@ -123,11 +125,11 @@ int DharaNandUserHardware::BlockIsFree(dhara_page_t p)
 
 	if (probe != 0xFFFFFFFF)
 	{
-		printf("Page is not erased!\r\n");
+		debug("Page %u is not erased!", p);
 		return false;
 	}
 
-	printf("Page is erased!\r\n");
+	debug("Page %u is erased!", p);
 	return true;
 }
 
@@ -148,7 +150,7 @@ int DharaNandUserHardware::Read(dhara_page_t p, size_t offset, size_t length, ui
 	}
 
 
-	printf("Read adr: %lu\r\n", (addr + offset));
+	debug("Read adr: %lu", (addr + offset));
 
 	return 0;
 }

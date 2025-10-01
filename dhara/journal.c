@@ -14,11 +14,14 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <string.h>
 #include "journal.h"
-#include "bytes.h"
 
-#include <stdio.h>  // debug
+#include <string.h>
+#include <stdio.h>
+#define debug(fmt, ...) \
+    fprintf(stderr, "[%s:%s:%d] " fmt "\n", __FILE_NAME__, __func__, __LINE__, ##__VA_ARGS__)
+
+#include "bytes.h"
 
 /************************************************************************
  * Metapage binary format
@@ -88,7 +91,6 @@ static inline void hdr_clear_user(uint8_t *buf, uint8_t log2_page_size)
 }
 
 /* Obtain pointers to user data */
-// you skip 'which' number of metadata blocks (each 132B and contains page id + 32 alt pointers)
 static inline size_t hdr_user_offset(uint8_t which)
 {
 	return DHARA_HEADER_SIZE + DHARA_COOKIE_SIZE +
@@ -125,10 +127,7 @@ static dhara_block_t next_block(const struct dhara_nand *n, dhara_block_t blk)
 static dhara_page_t next_upage(const struct dhara_journal *j,
 			       dhara_page_t p)
 {
-	// next page will always follow, so increment
 	p++;
-	// I assume this is skipping the checkpoint page? to get to next user page
-	// but why exactly this alignment?
 	if (is_aligned(p + 1, j->log2_ppc))
 		p++;
 
@@ -141,24 +140,15 @@ static dhara_page_t next_upage(const struct dhara_journal *j,
 /* Calculate a checkpoint period: the largest value of ppc such that
  * (2**ppc - 1) metadata blocks can fit on a page with one journal
  * header.
- * - ahh, ^^, so ppc is selected to always fit HEADER + COOKIE + ppc*DHARA_META_SIZE in a single page
- * - so assuming some standardized page size, it's basically fixed
- * 
- * Choosing pages per checkpoint (unit of user data in journal)
  */
 static int choose_ppc(int log2_page_size, int max)
 {
-    // page size without header and cookie
 	const int max_meta = (1 << log2_page_size) -
 		DHARA_HEADER_SIZE - DHARA_COOKIE_SIZE;
-    // required meta
 	int total_meta = DHARA_META_SIZE;
-    // initial pages per checkpoint
 	int ppc = 1;
 
-    // TODO: necessary to understand this or nah?
 	while (ppc < max) {
-        // double total meta (?)
 		total_meta <<= 1;
 		total_meta += DHARA_META_SIZE;
 
@@ -189,6 +179,7 @@ static void clear_recovery(struct dhara_journal *j)
 /* Set up an empty journal */
 static void reset_journal(struct dhara_journal *j)
 {
+	debug("");
 	/* We don't yet have a bad block estimate, so make a
 	 * conservative guess.
 	 */
@@ -209,6 +200,7 @@ static void reset_journal(struct dhara_journal *j)
 
 	/* Empty metadata buffer */
 	memset(j->page_buf, 0xff, 1 << j->nand->log2_page_size);
+	debug("zeroed all j->xxx values including j->recovery_xxx, memset j->page_buff to 0xff, returning from reset_journal()");
 }
 
 static void roll_stats(struct dhara_journal *j)
@@ -222,13 +214,18 @@ void dhara_journal_init(struct dhara_journal *j,
 			const struct dhara_nand *n,
 			uint8_t *page_buf)
 {
+	debug("");
 	/* Set fixed parameters */
 	j->nand = n;
 	j->page_buf = page_buf;
+	debug("choose_ppc(): log2_page_size %u, log2_ppb %u",
+		n->log2_page_size, n->log2_ppb);
 	j->log2_ppc = choose_ppc(n->log2_page_size, n->log2_ppb);
+	debug("log2_ppc: %u", j->log2_ppc);
+
 
 	reset_journal(j);
-	// TODO: nothing beyond this runs in host_test, need real HW connected to fully run Dhara?
+	debug("done, returning");
 }
 
 /* Find the first checkpoint-containing block. If a block contains any
@@ -239,31 +236,31 @@ static int find_checkblock(struct dhara_journal *j,
 			   dhara_block_t blk, dhara_block_t *where,
 			   dhara_error_t *err)
 {
+	debug("blk %u", blk);
 	int i;
 
-	// over all blocks while checking for max retries
+	debug("num_blocks %u DHARA_MAX_RETRIES %u", j->nand->num_blocks, DHARA_MAX_RETRIES);
 	for (i = 0; (blk < j->nand->num_blocks) &&
 		    (i < DHARA_MAX_RETRIES); i++) {
 		const dhara_page_t p =
 			(blk << j->nand->log2_ppb) |
 			((1 << j->log2_ppc) - 1);
 
+		debug("reading page %u to check for magic", p);
 		if (!(dhara_nand_is_bad(j->nand, blk) ||
-		// here we read 1 page worth of data into j->page_buf 
 		      dhara_nand_read(j->nand, p,
 				      0, 1 << j->nand->log2_page_size,
 				      j->page_buf, err)) &&
-			// check for magic, if it doesn't have it, iterate to next block
 		    hdr_has_magic(j->page_buf)) {
-			// blk is a sequential block number containing a checkpoint
-			// -> not every block has to contain a checkpoint?
 			*where = blk;
+			debug("found check block at %u, returning", *where);
 			return 0;
 		}
 
 		blk++;
 	}
 
+	debug("could not find check block, setting DHARA_E_TOO_BAD, returning");
 	dhara_set_error(err, DHARA_E_TOO_BAD);
 	return -1;
 }
@@ -332,11 +329,9 @@ static int cp_free(struct dhara_journal *j, dhara_page_t first_user)
 static dhara_page_t find_last_group(struct dhara_journal *j,
 				    dhara_block_t blk)
 {
-	// number of checkpoint groups in a block
 	const int num_groups = 1 << (j->nand->log2_ppb - j->log2_ppc);
 	int low = 0;
 	int high = num_groups - 1;
-	fprintf(stderr, "find_last_group: block %u, num_groups %u, low %u, high %u\n", blk, num_groups, low, high); // debug
 
 	/* If a checkpoint group is completely unprogrammed, everything
 	 * following it will be completely unprogrammed also.
@@ -359,13 +354,9 @@ static dhara_page_t find_last_group(struct dhara_journal *j,
 		}
 	}
 
-	fprintf(stderr, "after loop: block %u, num_groups %u, low %u, high %u\n", blk, num_groups, low, high); // debug
-	fprintf(stderr, "returning: %u\n", (blk << j->nand->log2_ppb)); // debug
-
 	return blk << j->nand->log2_ppb;
 }
 
-// root is last written user page in the journal
 static int find_root(struct dhara_journal *j, dhara_page_t start,
 		     dhara_error_t *err)
 {
@@ -448,23 +439,23 @@ static int find_head(struct dhara_journal *j, dhara_page_t start,
 
 int dhara_journal_resume(struct dhara_journal *j, dhara_error_t *err)
 {
+	debug("");
 	dhara_block_t first, last;
 	dhara_page_t last_group;
 
 	/* Find the first checkpoint-containing block */
-	// first checkblock, so starting from 0, DHARA_MAX_RETRIES will be the main limit?
-	// after find_checkblock(), j->page_buf will contain the checkpoint page, which governs N contigous pages before it
 	if (find_checkblock(j, 0, &first, err) < 0) {
+		debug("could not find first checkblock, resetting journal...");
 		reset_journal(j);
 		return -1;
 	}
+	fprintf(stderr, "\tfound first checkblock %u\n", first);
 
 	/* Find the last checkpoint-containing block in this epoch */
-	// checkpoint page has epoch in the header
-	// wouldn't it be out of date in the _first_ checkblock?
 	j->epoch = hdr_get_epoch(j->page_buf);
-	// last (== most recent, right?)
 	last = find_last_checkblock(j, first);
+
+	fprintf(stderr, "\tgot epoch from header %u and found last checkblock %u\n", j->epoch, last);
 
 	/* Find the last programmed checkpoint group in the block */
 	last_group = find_last_group(j, last);
@@ -493,6 +484,7 @@ int dhara_journal_resume(struct dhara_journal *j, dhara_error_t *err)
 	j->tail_sync = j->tail;
 
 	clear_recovery(j);
+	fprintf(stderr, "dhara_journal_resume(): returning\n");
 	return 0;
 }
 
@@ -509,7 +501,6 @@ dhara_page_t dhara_journal_capacity(const struct dhara_journal *j)
 	const dhara_page_t good_cps = good_blocks << log2_cpb;
 
 	/* Good checkpoints * (checkpoint period - 1) */
-	fprintf(stderr, "dhara_journal_capacity(): returning %u\n", (good_cps << j->log2_ppc) - good_cps); // debug
 	return (good_cps << j->log2_ppc) - good_cps;
 }
 
@@ -519,7 +510,6 @@ dhara_page_t dhara_journal_size(const struct dhara_journal *j)
 	 * between the head and the tail. The difference between the two
 	 * is the number of user pages (upper limit).
 	 */
-    // num of pages given by head? so head is simply the number of a pages used up sequentially?
 	dhara_page_t num_pages = j->head;
 	dhara_page_t num_cps = j->head >> j->log2_ppc;
 
@@ -534,28 +524,15 @@ dhara_page_t dhara_journal_size(const struct dhara_journal *j)
 	num_pages -= j->tail_sync;
 	num_cps -= j->tail_sync >> j->log2_ppc;
 
-    // cps == checkpoints
-    // each checkpoint consists of 2**log2_ppc pages?
 	return num_pages - num_cps;
 }
 
 int dhara_journal_read_meta(struct dhara_journal *j, dhara_page_t p,
 			    uint8_t *buf, dhara_error_t *err)
 {
+	debug("page %u", p);
 	/* Offset of metadata within the metadata page */
-
 	const dhara_page_t ppc_mask = (1 << j->log2_ppc) - 1;
-    // ppc_mask = page_per_checkblock - 1
-
-    // hdr offset returns the "Nth" meta given by the argument
-    // so you take the page number and mask it with something to obtain what?
-    // user data is grouped in checkpoints and the last page contains journal head and current metadata
-    // log2_ppc is the number of contiguously aligned pages in one "checkpoint"
-    // so 1 << log2_ppc == 2**log2_ppc and -1 it's mask for only enough bits
-    // for maximum number of bits allowed for a page in a checkpoint
-    // so the masking is just making sure it's a valid offset to use for hdr_user_offset() to not reach fully OOB
-
-	// how many metadata blocks you have in a checkpoint?
 	const size_t offset = hdr_user_offset(p & ppc_mask);
 
 	/* Special case: buffered metadata */
@@ -574,7 +551,6 @@ int dhara_journal_read_meta(struct dhara_journal *j, dhara_page_t p,
 				       buf, err);
 
 	/* General case: fetch from metadata page for checkpoint group */
-    // here you OR with the mask to obtain page number??
 	return dhara_nand_read(j->nand, p | ppc_mask,
 			       offset, DHARA_META_SIZE,
 			       buf, err);
@@ -665,6 +641,7 @@ static int skip_block(struct dhara_journal *j, dhara_error_t *err)
 /* Make sure the head pointer is on a ready-to-program page. */
 static int prepare_head(struct dhara_journal *j, dhara_error_t *err)
 {
+	debug("");
 	const dhara_page_t next = next_upage(j, j->head);
 	int i;
 
@@ -880,16 +857,23 @@ int dhara_journal_enqueue(struct dhara_journal *j,
 	dhara_error_t my_err;
 	int i;
 
+	debug("will try DHARA_MAX_RETRIES [%u]", DHARA_MAX_RETRIES);
 	for (i = 0; i < DHARA_MAX_RETRIES; i++) {
 		if (!(prepare_head(j, &my_err) ||
 		      (data && dhara_nand_prog(j->nand, j->head, data,
-					       &my_err))))
-			return push_meta(j, meta, err);
+					       &my_err)))) {
 
-		if (recover_from(j, my_err, err) < 0)
+			debug("prepare head or head prog OK, pushing meta and returning it's retval");
+			return push_meta(j, meta, err);
+		}
+		debug("something about head failed, calling recover_from()");
+		if (recover_from(j, my_err, err) < 0) {
+			debug("recover_from() returned < 0, returning");
 			return -1;
+		}
 	}
 
+	debug("could not push meta, setting DHARA_E_TOO_BAD and returning");
 	dhara_set_error(err, DHARA_E_TOO_BAD);
 	return -1;
 }

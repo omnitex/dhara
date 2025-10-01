@@ -8,6 +8,9 @@
 #include "NandExample.hpp"
 #include <cstdio>
 #include <cstring>
+#define debug(fmt, ...) \
+    fprintf(stderr, "[%s:%s:%d] " fmt "\n", __FILE_NAME__, __func__, __LINE__, ##__VA_ARGS__)
+
 
 uint8_t NandExample::Pages[];
 
@@ -32,7 +35,7 @@ int NandExample::EraseBlock(dhara_block_t bno, dhara_error_t *err)
         return -1;
 	}
 
-	printf("Erasing page: %d!\r\n", blk);
+	debug("Erasing page: %d!", blk);
 
 	memset(blk, 0xff, GetBlockSize());
 	return 0;
@@ -50,7 +53,7 @@ int NandExample::Prog(dhara_page_t p, const uint8_t *data, dhara_error_t *err)
         return -1;
 	}
 
-	printf("Write adr: %d\r\n", page);
+	debug("Write adr: %d", page);
 
 	memcpy(page, data, GetPageSize());
 	return 0;
@@ -72,11 +75,11 @@ int NandExample::BlockIsFree(dhara_page_t p)
 
     if ((blk[0] == 0xFF) && (blk[1] == 0xFF))
     {
-        printf("Page is erased!\r\n");
+        debug("Page %u is erased!", p);
         return false;
     }
 
-    printf("Page is not erased!\r\n");
+    debug("Page %u is not erased!", p);
     return true;
 }
 
@@ -97,7 +100,7 @@ int NandExample::Read(dhara_page_t p, size_t offset, size_t length, uint8_t *dat
 	}
 
 
-	printf("Read adr: %d\r\n", (page + offset));
+	debug("Read adr: %d", (page + offset));
 	memcpy(data, page + offset, length);
 	return 0;
 }

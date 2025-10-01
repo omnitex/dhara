@@ -14,9 +14,14 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <string.h>
-#include "bytes.h"
 #include "map.h"
+
+#include <string.h>
+#include <stdio.h>
+#define debug(fmt, ...) \
+    fprintf(stderr, "[%s:%s:%d] " fmt "\n", __FILE_NAME__, __func__, __LINE__, ##__VA_ARGS__)
+
+#include "bytes.h"
 
 #define DHARA_RADIX_DEPTH	(sizeof(dhara_sector_t) << 3)
 
@@ -71,21 +76,27 @@ static inline void meta_set_alt(uint8_t *meta, int level, dhara_page_t alt)
 void dhara_map_init(struct dhara_map *m, const struct dhara_nand *n,
 		    uint8_t *page_buf, uint8_t gc_ratio)
 {
+	debug("dhara_map_init()");
 	if (!gc_ratio)
 		gc_ratio = 1;
 
+	debug("gc_ratio: %u", gc_ratio);
 	dhara_journal_init(&m->journal, n, page_buf);
 	m->gc_ratio = gc_ratio;
 }
 
 int dhara_map_resume(struct dhara_map *m, dhara_error_t *err)
 {
+	debug("calling dhara_journal_resume()");
 	if (dhara_journal_resume(&m->journal, err) < 0) {
 		m->count = 0;
+		debug("dhara_journal_resume() returned < 0: set m->count to 0, returning");
 		return -1;
 	}
 
+	debug("calling ck_get_count()");
 	m->count = ck_get_count(dhara_journal_cookie(&m->journal));
+	debug("obtained m->count: %u", m->count);
 	return 0;
 }
 
@@ -99,16 +110,20 @@ void dhara_map_clear(struct dhara_map *m)
 
 dhara_sector_t dhara_map_capacity(const struct dhara_map *m)
 {
+	debug("");
 	const dhara_sector_t cap = dhara_journal_capacity(&m->journal);
-    // if gc_ratio is not set, it defaults to 1, thus reserve = cap / 2
-    // the greater the ratio the less is reserved then?
 	const dhara_sector_t reserve = cap / (m->gc_ratio + 1);
 	const dhara_sector_t safety_margin =
 		DHARA_MAX_RETRIES << m->journal.nand->log2_ppb;
 
-	if (reserve + safety_margin >= cap)
+	if (reserve + safety_margin >= cap) {
+		debug("returning 0 as reserve [%u] + safety_margin [%u] >= cap [%u]",
+			reserve, safety_margin, cap);
 		return 0;
+	}
 
+	debug("returning cap [%u] - reserve [%u] - safety_margin [%u] = %u",
+		cap, reserve, safety_margin, cap - reserve - safety_margin);
 	return cap - reserve - safety_margin;
 }
 
@@ -125,24 +140,27 @@ static int trace_path(struct dhara_map *m, dhara_sector_t target,
 		      dhara_page_t *loc, uint8_t *new_meta,
 		      dhara_error_t *err)
 {
+	debug("trace_path(): target %u", target);
 	uint8_t meta[DHARA_META_SIZE];
 	int depth = 0;
 	dhara_page_t p = dhara_journal_root(&m->journal);
+	debug("obtained journal root page %u", p);
 
-	if (new_meta)
-		// target is logical page number?
+	if (new_meta) {
 		meta_set_id(new_meta, target);
+		debug("set new meta id (target) %u", target);
+	}
 
 	if (p == DHARA_PAGE_NONE)
 		goto not_found;
 
-	// so here you read current meta of root page
-	if (dhara_journal_read_meta(&m->journal, p, meta, err) < 0)
+	if (dhara_journal_read_meta(&m->journal, p, meta, err) < 0) {
+		debug("dhara_journal_read_meta() returned < 0, returning");
 		return -1;
+	}
 
-	// radix depth, right, traversing the radix tree down from root
+	debug("will do while until DHARA_RADIX_DEPTH [%u]", DHARA_RADIX_DEPTH);
 	while (depth < DHARA_RADIX_DEPTH) {
-		// what is this id?
 		const dhara_sector_t id = meta_get_id(meta);
 
 		if (id == DHARA_SECTOR_NONE)
@@ -169,6 +187,7 @@ static int trace_path(struct dhara_map *m, dhara_sector_t target,
 
 		depth++;
 	}
+	debug("depth after while loop: %u, found page %u", depth, p);
 
 	if (loc)
 		*loc = p;
@@ -318,8 +337,6 @@ static int auto_gc(struct dhara_map *m, dhara_error_t *err)
 	if (dhara_journal_size(&m->journal) < dhara_map_capacity(m))
 		return 0;
 
-    // so here gc_ratio just specifies the num of iterations to run dhara_map_gc()
-    // with static parameters
 	for (i = 0; i <= m->gc_ratio; i++)
 		if (dhara_map_gc(m, err) < 0)
 			return -1;
@@ -330,42 +347,56 @@ static int auto_gc(struct dhara_map *m, dhara_error_t *err)
 static int prepare_write(struct dhara_map *m, dhara_sector_t dst,
 			 uint8_t *meta, dhara_error_t *err)
 {
+	debug("dst %u", dst);
 	dhara_error_t my_err;
 
 	if (auto_gc(m, err) < 0)
 		return -1;
 
 	if (trace_path(m, dst, NULL, meta, &my_err) < 0) {
+		debug("trace_path() returned < 0");
 		if (my_err != DHARA_E_NOT_FOUND) {
+			debug("error is not DHARA_E_NOT_FOUND, setting error and returning");
 			dhara_set_error(err, my_err);
 			return -1;
 		}
 
+		debug("checking m->count [%u] >= dhara_map_capacity(m) [%u]", m->count, dhara_map_capacity(m));
 		if (m->count >= dhara_map_capacity(m)) {
 			dhara_set_error(err, DHARA_E_MAP_FULL);
 			return -1;
 		}
 
+		debug("capacity OK, incrementing m->count from %u to %u", m->count, m->count + 1);
 		m->count++;
 	}
+	debug("trace_path() complete, setting ck count %u, returning", m->count);
 
 	ck_set_count(dhara_journal_cookie(&m->journal), m->count);
 	return 0;
 }
 
+
+
 int dhara_map_write(struct dhara_map *m, dhara_sector_t dst,
 		    const uint8_t *data, dhara_error_t *err)
 {
+	debug("dst %u", dst);
 	for (;;) {
 		uint8_t meta[DHARA_META_SIZE];
 		dhara_error_t my_err;
 		const dhara_sector_t old_count = m->count;
 
-		if (prepare_write(m, dst, meta, err) < 0)
+		if (prepare_write(m, dst, meta, err) < 0) {
+			debug("prepare_write() returned < 0");
 			return -1;
+		}
 
-		if (!dhara_journal_enqueue(&m->journal, data, meta, &my_err))
+		debug("trying dhara_journal_enqueue(): will break loop on success");
+		if (!dhara_journal_enqueue(&m->journal, data, meta, &my_err)) {
+			debug("dhara_journal_enqueue(): OK, breaking out");
 			break;
+		}
 
 		m->count = old_count;
 
@@ -373,6 +404,7 @@ int dhara_map_write(struct dhara_map *m, dhara_sector_t dst,
 			return -1;
 	}
 
+	debug("successful write");
 	return 0;
 }
 
