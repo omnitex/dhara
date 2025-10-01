@@ -1,6 +1,6 @@
 journal.h: struct dhara_journal, epoch, increments whenever journal head passes the end of chip
 and wraps around. So the "perfect wear leveling, only off by 1" is achieved via going through
-the memory and using always a new page for writing? 
+the memory and using always a new page for writing?
 
 log2_ppc: it's the log2 of ppc (pages per checkpoint) of the number of contiguous aligned pages in one "checkpoint" -- a unit in the journal user data is grouped into
 
@@ -41,12 +41,14 @@ Dhara has 1-4 bits repair BCH codes, the strongest uses 7 ECC bytes for given ch
 
 
 TODO: real HW benchmark? and/or over abstracted block device? how to classify performance?
- - prolly need to do add verbose "debug prints" to Dhara/dhara_glue/spi_nand_flash and test on HW to capture the flow easier than going through the code
+- prolly need to do add verbose "debug prints" to Dhara/dhara_glue/spi_nand_flash and test on HW to capture the flow easier than going through the code
+- started ^^ via some guy's example forked of Dhara, using mock NAND
 
 ### cons?:
 - radix tree queue & dequeue journal, alt-pointers, garbage collection, repacking == quite intricate implementation when compared to legacy (*A) -- see below
-- if each page write "emits" a journal update, "instruction consumption"?
-- no read disturbance mitigation (fact check?) -- repeated read operations without refreshing the data via writing degrades it
+- if each page write "emits" a journal update, is the cpu time overhead alright?
+- no read disturbance mitigation (fact check?) -- repeated read operations without refreshing the data via writing degrades it -- THIS IS TAKEN CARE OF INTERNALLY IN spi_nand_flash
+- ^^ but the same page is rewritten: if it's worn out and becoming faulty, it would make sense to move the data to more healthy page! move the info up to Dhara layer and perform "page" relief?
 
 (*A) comparing to "legacy" WL https://github.com/espressif/esp-idf/tree/master/components/wear_levelling
 - legacy on NOR flash, 4KB sector size vs. NAND where each page is 2048/4096 + some OOB
@@ -62,4 +64,22 @@ TODO: real HW benchmark? and/or over abstracted block device? how to classify pe
 - as Dhara currently does not use any OOB areas, we could easily use them for this
 - TODO double check current OOB usage: only bad block marking in first page of a block, first 2 bytes of OOB being non-0xffff (https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/src/nand_impl.c#L95)? nothing besides this?
 - https://github.com/omnitex/dhara/blob/master/dhara/nand.h#L92 read will have to provide ECC info regardless of any error occurring -- we need the number of bits corrected (can be obtained, if the NAND chips supports it, from ECC portion of status register after a read)
-- TODO check if status register contents are vendor specific or standardized
+### OBSOLETE START
+- ECC correction in status register IS VENDOR SPECIFIC, and can offer different level of detail (Micron 3bit info, Alliance 2bits)
+- assuming 2bit info is the universal minimum -- thus we working with 00: no bit errors detected, 01: detected & corrected, 10: uncorrectable detected, 11: max number (8) detected and corrected
+- 2bit vs 3bit are "backwards" compatible via 00, 01 and 10 (~same meaning). 11 on 3bit becomes non-max bits corrected but more than 01, with only one full 3bit value 101 which serves as the new "max possible corrections performed"
+- so an enum with these different statuses, they mostly overlap, but there would need to be separation based on how many ECC status bits are available
+- expose the status for some internal Dhara metadata marking -- it can be below Dhara: nand read -> check status -> if status != 00, write to page OOB area (the part protected by internal ECC) in flash-friendly-can-be-updated way
+- then dhara write/find next user page/head whatever can be made to check those OOB bits and have some e.g. 50/50% - 75/25% chance to "relieve" the page for this write and skip it?
+### OBSOLETE END
+- !! we already have that https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/priv_include/nand.h#L28
+- the status is checked only on not corrected https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/src/dhara_glue.c#L231
+- https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/src/nand.c#L255 rewrite of data to the same sector is already done on soft ECC error
+- nand_diag_api.c: so it's kinda already there, handle->chip.ecc_data is being set: is_ecc_error() parses status register, read_page_and_wait sets status
+- so it's read_page_and_wait() -> is_ecc_error()
+- https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/src/nand_impl.c#L295 why is the page read 2 times in different ways? is the first read just a mock without getting the data but to trigger ECC correction and updating of status register? yessir
+- https://github.com/espressif/idf-extra-components/blob/master/spi_nand_flash/src/nand_impl.c#L235 `used_marker`? another 2 bytes after bad block marker?
+- TODO MT29F4G01ABAFDWB, MT29F4G01ABAFD12 looks like it has 4 bytes reserved for bad block marking, so it's not _really_ valid we're writing there?
+- also that first spare area is not internal ecc protected -- don't we wanna write to oob that is? if we check first 2 bytes to determine bad block, if it's bad, we don't care about anything else, if not, the next 2 bytes ought to be 0xffff. but still feels bad writing to possibly reserved non ecc-protected space for a marker
+- it varies between NAND chips... the layout of spare areas, ecc prot vs non-prot, the size of bad block marker... should we tailor it to each nand specifically? assuming there won't be changes between chips from a single vendor
+- PROGRAM LOAD RANDOM DATA 0x84 command loads data into cache, then PROGRAM EXECUTE writes to flash

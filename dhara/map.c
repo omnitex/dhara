@@ -213,20 +213,26 @@ int dhara_map_find(struct dhara_map *m, dhara_sector_t target,
 int dhara_map_read(struct dhara_map *m, dhara_sector_t s,
 		   uint8_t *data, dhara_error_t *err)
 {
+	debug("s %u", s);
 	const struct dhara_nand *n = m->journal.nand;
 	dhara_error_t my_err;
 	dhara_page_t p;
 
+	debug("calling dhara_map_find()");
 	if (dhara_map_find(m, s, &p, &my_err) < 0) {
+		debug("dhara_map_find() returned < 0");
 		if (my_err == DHARA_E_NOT_FOUND) {
+			debug("error is DHARA_E_NOT_FUND, setting read data to 0xff");
 			memset(data, 0xff, 1 << n->log2_page_size);
 			return 0;
 		}
 
+		debug("other dhara error, returning");
 		dhara_set_error(err, my_err);
 		return -1;
 	}
 
+	debug("found page %u in map, will dhara_nand_read() it", p);
 	return dhara_nand_read(n, p, 0, 1 << n->log2_page_size, data, err);
 }
 
